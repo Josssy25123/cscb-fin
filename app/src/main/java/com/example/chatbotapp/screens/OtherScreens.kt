@@ -32,6 +32,8 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 
 import kotlinx.coroutines.launch
@@ -898,6 +900,10 @@ fun CurriculumContent(
     modifier: Modifier = Modifier,
     onLaunchBrowser: (String) -> Unit
 ) {
+    // 🔹 ViewModel + UI state from backend
+    val coursesViewModel: CoursesViewModel = viewModel()
+    val uiState by coursesViewModel.uiState.collectAsState()
+
     var selectedCategory by remember { mutableStateOf("All") }
     var searchQuery by remember { mutableStateOf("") }
     var expandedCourse by remember { mutableStateOf<String?>(null) }
@@ -909,7 +915,7 @@ fun CurriculumContent(
     val coroutineScope = rememberCoroutineScope()
     val categories = listOf("All", "Math", "Core CS", "Advanced", "Electives", "Capstone", "Taken")
 
-    // Fetch taken courses from Firestore once
+    // 🔹 DegreeWorks from Firestore (your existing logic)
     LaunchedEffect(Unit) {
         coroutineScope.launch {
             try {
@@ -927,7 +933,7 @@ fun CurriculumContent(
                         hasDegreeworksData = true
                         val sections = snapshot.get("json_preview.sections") as? List<Map<String, Any>>
                         val completed = mutableListOf<String>()
-                        val detailedCoursesMap = mutableMapOf<String, CompletedCourse>() // ✅ USE MAP
+                        val detailedCoursesMap = mutableMapOf<String, CompletedCourse>()
 
                         sections?.forEach { section ->
                             val completedCourses = section["completed_courses"] as? List<Map<String, Any>>
@@ -939,8 +945,6 @@ fun CurriculumContent(
 
                                 if (!code.isNullOrEmpty() && grade != "IP") {
                                     completed.add(code)
-
-                                    // ✅ ONLY ADD IF NOT ALREADY IN MAP (prevents duplicates)
                                     if (!detailedCoursesMap.containsKey(code)) {
                                         detailedCoursesMap[code] = CompletedCourse(
                                             code = code,
@@ -953,11 +957,8 @@ fun CurriculumContent(
                             }
                         }
 
-                        takenCourses = completed.distinct() // ✅ REMOVE DUPLICATES
-                        takenCoursesDetails = detailedCoursesMap.values.toList().sortedBy { it.code } // ✅ CONVERT MAP TO LIST
-                        println("TAKEN CODES: $takenCourses")
-                        println("TAKEN DETAILS: $takenCoursesDetails")
-
+                        takenCourses = completed.distinct()
+                        takenCoursesDetails = detailedCoursesMap.values.toList().sortedBy { it.code }
                     }
                 }
             } catch (e: Exception) {
@@ -968,61 +969,25 @@ fun CurriculumContent(
         }
     }
 
-    val msuCourses = remember {
-        listOf(
-            // Math Foundation / Supporting
-            MSUCourse("MATH 241", "Calculus I", 4, listOf("ENGR 101, MATH 114, MATH 141"), listOf("Fall", "Spring"), "Math"),
-            MSUCourse("MATH 242", "Calculus II (MQ)", 4, listOf("MATH 241 (Grade C or higher)"), listOf("Fall", "Spring"), "Math"),
-            MSUCourse("MATH 312", "Linear Algebra I", 3, listOf("MATH 241 (Grade C or higher)"), listOf("Fall", "Spring"), "Math"),
-            MSUCourse("MATH 331", "Applied Probability and Statistics", 3, listOf("MATH 242 (Grade C or higher)"), listOf("Fall", "Spring"), "Math"),
+    // 🔹 Load courses from backend once
+    LaunchedEffect(Unit) {
+        coursesViewModel.loadCourses()
+    }
 
-            // Computer Ethics / Supporting
-            MSUCourse("COSC 201", "Computer Ethics", 1, emptyList(), listOf("Fall", "Spring"), "Core CS"),
+    // Backend courses from ViewModel
+    val msuCourses: List<MSUCourse> = uiState.courses
 
-            // Core CS Requirements
-            MSUCourse("COSC 111", "Introduction to Computer Science I", 4, emptyList(), listOf("Fall", "Spring"), "Core CS"),
-            MSUCourse("COSC 112", "Introduction to Computer Science II", 4, listOf("COSC 111 (Grade C or higher)"), listOf("Fall", "Spring"), "Core CS"),
-            MSUCourse("COSC 220", "Data Structures and Algorithms Analysis", 4, listOf("COSC 112 (Grade C or higher)"), listOf("Fall", "Spring"), "Core CS"),
-            MSUCourse("COSC 241", "Computer Systems & Digital Logic", 3, listOf("COSC 112, MATH 141 (Grade C or higher)"), listOf("Fall", "Spring"), "Core CS"),
-            MSUCourse("COSC 281", "Discrete Structures", 3, listOf("COSC 112 (Grade C or higher)"), listOf("Fall", "Spring"), "Core CS"),
-
-            // Additional required CS
-            MSUCourse("COSC 349", "Computer Networks", 3, listOf("COSC 243 or equivalent (Grade C or higher)"), listOf("Fall", "Spring"), "Advanced"), // prereq summarized [web:35]
-            MSUCourse("COSC 351", "Cybersecurity", 3, listOf("COSC 112 (Grade C or higher)"), listOf("Fall", "Spring"), "Advanced"),
-            MSUCourse("COSC 352", "Organization of Programming Languages", 3, listOf("COSC 220 (Grade C or higher)"), listOf("Fall", "Spring"), "Advanced"),
-            MSUCourse("COSC 354", "Operating Systems", 3, listOf("COSC 220, COSC 241 (Grade C or higher)"), listOf("Fall", "Spring"), "Advanced"),
-            MSUCourse("COSC 458", "Software Engineering", 3, listOf("COSC 220 (Grade C or higher)"), listOf("Fall", "Spring"), "Advanced"),
-            MSUCourse("COSC 459", "Database Design", 3, listOf("COSC 220 (Grade C or higher)"), listOf("Fall", "Spring"), "Advanced"),
-
-            // Group A Electives (examples from your audit)
-            MSUCourse("COSC 238", "Object Oriented Programming", 4, listOf("COSC 112 (Grade C or higher)"), listOf("Fall", "Spring"), "Electives"),
-            MSUCourse("COSC 251", "Introduction to Data Science", 3, listOf("COSC 112 (Grade C or higher)"), listOf("Fall", "Spring"), "Electives"),
-            MSUCourse("CLCO 261", "Intro to Cloud Computing", 3, listOf("COSC 112 (Grade C or higher)"), listOf("Fall", "Spring"), "Electives"),
-
-            // Group B Electives
-            MSUCourse("COSC 323", "Introduction to Cryptography", 3, listOf("COSC 220, COSC 281 (Grade C or higher)"), listOf("Fall", "Spring"), "Electives"),
-        MSUCourse("COSC 385", "Theory of Languages & Automata", 3, listOf("COSC 281 (Grade C or higher)"), listOf("Fall", "Spring"), "Electives"),
-
-        // Group C Electives
-        MSUCourse("COSC 470", "Artificial Intelligence", 3, listOf("COSC 220 (Grade C or higher)"), listOf("Fall", "Spring"), "Electives"),
-        MSUCourse("COSC 472", "Intro to Machine Learning", 3, listOf("COSC 112, MATH 312 (Grade C or higher)"), listOf("Fall", "Spring"), "Electives"),
-        MSUCourse("COSC 498", "Senior Internship", 3, listOf("Department permission"), listOf("Fall", "Spring"), "Electives"),
-        MSUCourse("COSC 499", "Senior Research / Teaching Assistant", 3, listOf("Department permission"), listOf("Fall", "Spring"), "Electives"),
-
-        // Group D Electives
-        MSUCourse("COSC 345", "Intro to High Performance Computing", 3, listOf("Some programming background"), listOf("Fall", "Spring"), "Electives"),
-
-        // Capstone / Senior
-        MSUCourse("COSC 490", "Senior Project", 3, listOf("Senior standing, department permission"), listOf("As Needed"), "Capstone"),
-        MSUCourse("COSC 001", "Computer Science Senior Comprehensive Exam", 0, emptyList(), listOf("As Needed"), "Capstone")
+    // Mark taken courses
+    val displayedCourses: List<MSUCourse> = msuCourses.map { course: MSUCourse ->
+        course.copy(
+            isTaken = takenCourses.any { code ->
+                code.contains(course.courseCode, ignoreCase = true)
+            }
         )
     }
 
-    val displayedCourses = msuCourses.map { course ->
-        course.copy(isTaken = takenCourses.any { it.contains(course.courseCode, ignoreCase = true) })
-    }
-
-    val filteredCourses = displayedCourses.filter { course ->
+    // Filter by category + search
+    val filteredCourses: List<MSUCourse> = displayedCourses.filter { course ->
         val matchesCategory = when (selectedCategory) {
             "All" -> true
             "Taken" -> course.isTaken
@@ -1034,7 +999,8 @@ fun CurriculumContent(
         matchesCategory && matchesSearch
     }
 
-    if (isLoading) {
+    // 🔹 Combined loading: backend or Firestore
+    if (isLoading || uiState.isLoading) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
         }
@@ -1108,7 +1074,7 @@ fun CurriculumContent(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Degreeworks button
+        // DegreeWorks button
         if (!hasDegreeworksData) {
             Column(
                 modifier = Modifier.fillMaxWidth(),
@@ -1135,7 +1101,7 @@ fun CurriculumContent(
             Spacer(modifier = Modifier.height(16.dp))
         }
 
-        // Course list - SPECIAL HANDLING FOR "TAKEN" TAB
+        // Course list – special handling for "Taken"
         if (selectedCategory == "Taken") {
             if (takenCoursesDetails.isEmpty()) {
                 Box(
@@ -1155,17 +1121,18 @@ fun CurriculumContent(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     state = rememberLazyListState()
                 ) {
-                    items(takenCoursesDetails.filter { course ->
-                        searchQuery.isEmpty() ||
-                                course.code.contains(searchQuery, ignoreCase = true) ||
-                                course.title.contains(searchQuery, ignoreCase = true)
-                    }) { course ->
+                    items(
+                        takenCoursesDetails.filter { course ->
+                            searchQuery.isEmpty() ||
+                                    course.code.contains(searchQuery, ignoreCase = true) ||
+                                    course.title.contains(searchQuery, ignoreCase = true)
+                        }
+                    ) { course ->
                         TakenCourseCard(course)
                     }
                 }
             }
         } else {
-            // Regular course display for other tabs
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 state = rememberLazyListState()
@@ -1175,7 +1142,8 @@ fun CurriculumContent(
                         course = course,
                         isExpanded = expandedCourse == course.courseCode,
                         onToggleExpand = {
-                            expandedCourse = if (expandedCourse == course.courseCode) null else course.courseCode
+                            expandedCourse =
+                                if (expandedCourse == course.courseCode) null else course.courseCode
                         }
                     )
                 }
